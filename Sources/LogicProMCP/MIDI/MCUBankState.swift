@@ -23,7 +23,7 @@ actor MCUBankState {
     /// Start parsing inbound LCD sysex.
     func start() async {
         guard listenerTask == nil else { return }
-        let stream = engine.inboundMessages
+        let stream = await engine.subscribe()
         listenerTask = Task { [weak self] in
             for await event in stream {
                 await self?.handle(event: event)
@@ -71,7 +71,7 @@ actor MCUBankState {
               bytes[1] == 0x00,
               bytes[2] == 0x00,
               bytes[3] == 0x66,
-              bytes[4] == ServerConfig.mcuDeviceID,
+              ServerConfig.mcuAcceptedDeviceIDs.contains(bytes[4]),
               bytes[5] == MCU.lcdCommand,
               bytes.last == 0xF7 else {
             return

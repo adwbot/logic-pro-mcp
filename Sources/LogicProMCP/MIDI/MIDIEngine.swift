@@ -9,9 +9,17 @@ actor MIDIEngine {
     private var virtualDestination: MIDIEndpointRef = 0
     private var isRunning = false
 
-    /// Stream of inbound MIDI packets from Logic Pro via the virtual destination.
+    /// Primary stream of inbound MIDI packets from Logic Pro via the virtual destination.
+    /// Single-consumer. Most callers should use `subscribe()` instead so multiple actors
+    /// (handshake, bank-state, future automation) can each get their own copy of events.
     let inboundMessages: AsyncStream<MIDIFeedback.Event>
     private let inboundContinuation: AsyncStream<MIDIFeedback.Event>.Continuation
+
+    /// Fan-out: every continuation registered via `subscribe()` is also yielded each event.
+    private var subscribers: [AsyncStream<MIDIFeedback.Event>.Continuation] = []
+
+    /// Background task that drains `inboundMessages` and rebroadcasts to subscribers.
+    private var fanOutTask: Task<Void, Never>?
 
     init() {
         let (stream, continuation) = AsyncStream<MIDIFeedback.Event>.makeStream()
@@ -21,6 +29,16 @@ actor MIDIEngine {
 
     deinit {
         inboundContinuation.finish()
+        for sub in subscribers { sub.finish() }
+    }
+
+    /// Get a fresh subscriber stream. Each subscriber receives a copy of every inbound event
+    /// after subscribe() returns. Use this from MCUHandshake, MCUBankState, etc., so multiple
+    /// consumers don't compete for events from the single `inboundMessages` stream.
+    func subscribe() -> AsyncStream<MIDIFeedback.Event> {
+        let (stream, continuation) = AsyncStream<MIDIFeedback.Event>.makeStream()
+        subscribers.append(continuation)
+        return stream
     }
 
     // MARK: - Lifecycle
@@ -59,12 +77,32 @@ actor MIDIEngine {
         }
 
         isRunning = true
+
+        // Start fan-out loop: every event from the receive callback goes through
+        // inboundContinuation and gets rebroadcast to all subscribers here.
+        let stream = inboundMessages
+        fanOutTask = Task { [weak self] in
+            for await event in stream {
+                await self?.broadcast(event: event)
+            }
+        }
+
         Log.info("MIDIEngine started — source: \(ServerConfig.virtualMIDISourceName), sink: \(ServerConfig.virtualMIDISinkName)", subsystem: "midi")
+    }
+
+    private func broadcast(event: MIDIFeedback.Event) {
+        for sub in subscribers {
+            sub.yield(event)
+        }
     }
 
     /// Tear down all CoreMIDI resources.
     func stop() {
         guard isRunning else { return }
+        fanOutTask?.cancel()
+        fanOutTask = nil
+        for sub in subscribers { sub.finish() }
+        subscribers.removeAll()
         if virtualSource != 0 { MIDIEndpointDispose(virtualSource) }
         if virtualDestination != 0 { MIDIEndpointDispose(virtualDestination) }
         if client != 0 { MIDIClientDispose(client) }

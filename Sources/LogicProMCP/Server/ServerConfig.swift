@@ -19,11 +19,21 @@ struct ServerConfig: Sendable {
     static let mmcDeviceID: UInt8 = 0x7F
 
     // MARK: - MCU (Mackie Control Universal)
-    /// MCU device id used in the SysEx manufacturer header (0x14 = MCU-V).
-    /// Logic Pro auto-detects this when our virtual MIDI port name matches Logic's
-    /// preference for a Mackie Control surface. If 0x14 is ignored on a given
-    /// Logic version, try 0x10 (Logic Control / legacy MCU).
+    /// MCU device id used in the SysEx manufacturer header.
+    ///   0x10 = Logic Control (legacy Mackie; what Apple ships out of the box).
+    ///   0x11 = Logic Control XT (extender).
+    ///   0x14 = Mackie Control Universal (MCU-V).
+    /// Logic 12.2 desktop empirically queries new virtual ports with 0x14 (MCU-V).
+    /// We accept any of {0x10, 0x11, 0x14} on inbound sysex and reply using the
+    /// same id Logic queried with; this constant is only used for OUTBOUND messages
+    /// that are not in direct reply to a query (handshake confirmation when we
+    /// initiate, button/fader/V-Pot messages — all of which use channel 0 status
+    /// bytes that don't carry the device id at all).
     static let mcuDeviceID: UInt8 = 0x14
+
+    /// Set of device ids we accept on inbound MCU sysex. Logic may query with any
+    /// of these depending on which control-surface module is configured.
+    static let mcuAcceptedDeviceIDs: Set<UInt8> = [0x10, 0x11, 0x14]
 
     /// Fixed serial number bytes we present in the MCU handshake. Seven 7-bit values.
     /// Logic uses this as the surface's identity; any consistent 7-byte value works.

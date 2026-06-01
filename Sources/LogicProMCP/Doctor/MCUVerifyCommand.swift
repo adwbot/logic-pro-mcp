@@ -113,10 +113,19 @@ enum MCUVerifyCommand {
             print("PASS — state changed via MCU.")
             return 0
         } else {
-            print("FAIL — state did not change. MCU message was sent but Logic did not apply it.")
-            print("  Possible causes: handshake not completed, surface not registered in Logic")
-            print("  Preferences > Control Surfaces > Setup, wrong device id (try 0x10), or track")
-            print("  index out of range.")
+            print("FAIL — Logic received the MIDI but didn't apply the state change.")
+            print("")
+            print("  Most likely cause on Logic 12.2: the Mackie Control surface is not")
+            print("  registered. Apple's 'auto-detect' applies only to physical USB MCU")
+            print("  devices; virtual ports require manual setup. To fix:")
+            print("")
+            print("    1. In Logic Pro: Logic Pro > Settings > Control Surfaces > Setup")
+            print("    2. New > Install... > Mackie Designs > Mackie Control > Add")
+            print("    3. Set Input Port = LogicProMCP-Out, Output Port = LogicProMCP-In")
+            print("    4. Close Settings. Re-run this command.")
+            print("")
+            print("  If still failing after the surface is added, the handshake or device")
+            print("  id is wrong. Run with LOG_LEVEL=debug to see inbound sysex from Logic.")
             return 1
         }
     }

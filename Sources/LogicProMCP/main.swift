@@ -29,6 +29,12 @@ if let idx = CommandLine.arguments.firstIndex(of: "mcu-verify") {
     exit(Int32(code))
 }
 
+// Handle `mcu-setup` subcommand — opens Logic's Control Surfaces > Setup window
+// and prints one-time-install instructions.
+if CommandLine.arguments.contains("mcu-setup") {
+    exit(Int32(MCUSetupCommand.run()))
+}
+
 // Start the MCP server
 let server = LogicProServer()
 do {
