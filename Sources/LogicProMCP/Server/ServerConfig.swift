@@ -18,6 +18,24 @@ struct ServerConfig: Sendable {
     /// MMC device ID (0x7F = all devices)
     static let mmcDeviceID: UInt8 = 0x7F
 
+    // MARK: - MCU (Mackie Control Universal)
+    /// MCU device id used in the SysEx manufacturer header (0x14 = MCU-V).
+    /// Logic Pro auto-detects this when our virtual MIDI port name matches Logic's
+    /// preference for a Mackie Control surface. If 0x14 is ignored on a given
+    /// Logic version, try 0x10 (Logic Control / legacy MCU).
+    static let mcuDeviceID: UInt8 = 0x14
+
+    /// Fixed serial number bytes we present in the MCU handshake. Seven 7-bit values.
+    /// Logic uses this as the surface's identity; any consistent 7-byte value works.
+    static let mcuSerialBytes: [UInt8] = [0x4C, 0x50, 0x4D, 0x43, 0x50, 0x00, 0x01]
+
+    /// Delay after sending an MCU mutation before reading back via AX for verification.
+    /// 0.25s is empirically enough for Logic 12.2 to apply mute/solo/arm/select changes.
+    static let mcuVerifyDelaySeconds: Double = 0.25
+
+    /// Number of channels in an MCU bank (Mackie Control standard).
+    static let mcuBankSize: Int = 8
+
     // MARK: - State Polling (Accessibility)
     /// Transport poll interval when actively in use (<5s since last tool call)
     static let activeTransportPollInterval: TimeInterval = 0.5
