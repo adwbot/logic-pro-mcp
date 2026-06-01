@@ -35,7 +35,9 @@ actor LogicProServer {
 
         // Create channel instances
         let midiEngine = MIDIEngine()
-        self.coreMIDIChannel = CoreMIDIChannel(engine: midiEngine)
+        let mcuBank = MCUBankState(engine: midiEngine)
+        let mcuHandshake = MCUHandshake(engine: midiEngine)
+        self.coreMIDIChannel = CoreMIDIChannel(engine: midiEngine, bank: mcuBank, handshake: mcuHandshake)
 
         let oscClient = OSCClient()
         let oscServer = OSCServer()

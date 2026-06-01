@@ -1,20 +1,28 @@
 import Foundation
 
-/// Channel that routes operations through CoreMIDI / MMC.
+/// Channel that routes operations through CoreMIDI / MMC / MCU.
 actor CoreMIDIChannel: Channel {
     let id: ChannelID = .coreMIDI
     private let engine: MIDIEngine
+    private let bank: MCUBankState
+    private let handshake: MCUHandshake
 
-    init(engine: MIDIEngine) {
+    init(engine: MIDIEngine, bank: MCUBankState, handshake: MCUHandshake) {
         self.engine = engine
+        self.bank = bank
+        self.handshake = handshake
     }
 
     func start() async throws {
         try await engine.start()
-        Log.info("CoreMIDIChannel started", subsystem: "midi")
+        await bank.start()
+        await handshake.start()
+        Log.info("CoreMIDIChannel started (MMC + MCU)", subsystem: "midi")
     }
 
     func stop() async {
+        await handshake.stop()
+        await bank.stop()
         await engine.stop()
         Log.info("CoreMIDIChannel stopped", subsystem: "midi")
     }
@@ -147,9 +155,75 @@ actor CoreMIDIChannel: Channel {
             await engine.sendSysEx(bytes)
             return .success("SysEx sent (\(bytes.count) bytes)")
 
+        // MARK: - MCU: Track buttons (mute/solo/arm/select)
+
+        case "track.set_mute":
+            return await sendTrackButton(params: params, noteFn: MCU.muteNote, label: "mute")
+
+        case "track.set_solo":
+            return await sendTrackButton(params: params, noteFn: MCU.soloNote, label: "solo")
+
+        case "track.set_arm":
+            return await sendTrackButton(params: params, noteFn: MCU.armNote, label: "arm")
+
+        case "track.select":
+            return await sendTrackButton(params: params, noteFn: MCU.selectNote, label: "select", momentary: true)
+
+        // MARK: - MCU: Mixer (fader / V-Pot)
+
+        case "mixer.set_volume":
+            guard let trackIdx = params["index"].flatMap(Int.init) else {
+                return .error("mixer.set_volume requires 'index'")
+            }
+            guard let value = params["volume"].flatMap(Double.init) else {
+                return .error("mixer.set_volume requires 'volume' (0.0-1.0)")
+            }
+            let bankChannel = await bank.bank(toTrackIndex: trackIdx)
+            let pbValue = MCU.faderValue(normalized: value)
+            await engine.sendPitchBend(channel: MCU.faderChannel(bankChannel: bankChannel), value: pbValue)
+            return .success("MCU fader track=\(trackIdx) bankCh=\(bankChannel) value=\(value) pb=\(pbValue)")
+
+        case "mixer.set_pan":
+            guard let trackIdx = params["index"].flatMap(Int.init) else {
+                return .error("mixer.set_pan requires 'index'")
+            }
+            guard let value = params["pan"].flatMap(Double.init) else {
+                return .error("mixer.set_pan requires 'pan' (-1.0..+1.0)")
+            }
+            let bankChannel = await bank.bank(toTrackIndex: trackIdx)
+            // V-Pot is relative — send a strong delta in the desired direction; Logic clamps.
+            let clamped = max(-1.0, min(1.0, value))
+            let direction = clamped >= 0 ? 1 : -1
+            let cc = MCU.vpotCC(bankChannel: bankChannel)
+            let delta = MCU.vpotDelta(ticks: direction * 7)
+            await engine.sendCC(channel: 0, controller: cc, value: delta)
+            return .success("MCU V-Pot track=\(trackIdx) bankCh=\(bankChannel) pan=\(value) cc=\(cc) delta=\(delta)")
+
         default:
             return .error("Unknown CoreMIDI operation: \(operation)")
         }
+    }
+
+    // MARK: - MCU button helper
+
+    /// Banks to the requested track, then sends a press + release on the MCU button identified
+    /// by `noteFn(bankChannel)`. MCU buttons are stateless triggers; Logic itself toggles state.
+    private func sendTrackButton(
+        params: [String: String],
+        noteFn: (Int) -> UInt8,
+        label: String,
+        momentary: Bool = false
+    ) async -> ChannelResult {
+        guard let trackIdx = params["index"].flatMap(Int.init) else {
+            return .error("track.set_\(label) requires 'index'")
+        }
+        _ = momentary // currently unused — Logic toggles all of these by press; reserved for future
+        let bankChannel = await bank.bank(toTrackIndex: trackIdx)
+        let note = noteFn(bankChannel)
+        await engine.sendNoteOn(channel: 0, note: note, velocity: MCU.pressVelocity)
+        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms inter-byte gap
+        await engine.sendNoteOn(channel: 0, note: note, velocity: MCU.releaseVelocity)
+        return .success("MCU \(label) track=\(trackIdx) bankCh=\(bankChannel) note=\(String(format: "0x%02X", note))")
     }
 
     func healthCheck() async -> ChannelHealth {
