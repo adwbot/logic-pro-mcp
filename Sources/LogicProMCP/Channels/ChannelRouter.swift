@@ -37,24 +37,27 @@ actor ChannelRouter {
         "track.get_tracks":           [.accessibility],
         "track.get_selected":         [.accessibility],
 
-        // Track mutation — AX click, fallback to keyboard
-        "track.select":               [.accessibility, .cgEvent],
+        // Track mutation — CoreMIDI (MCU) primary on desktop Logic where AX is read-only,
+        // Accessibility as fallback (works on Creator Studio). CoreMIDI returns an error
+        // (no silent success) when the MCU handshake hasn't completed, so the router will
+        // correctly fall back to AX in that case.
+        "track.select":               [.coreMIDI, .accessibility, .cgEvent],
         "track.create_audio":         [.cgEvent, .accessibility],
         "track.create_instrument":    [.cgEvent, .accessibility],
         "track.create_drummer":       [.cgEvent, .accessibility],
         "track.create_external_midi": [.cgEvent, .accessibility],
         "track.delete":               [.cgEvent, .accessibility],
         "track.rename":               [.accessibility],
-        "track.set_mute":             [.accessibility, .cgEvent],
-        "track.set_solo":             [.accessibility, .cgEvent],
-        "track.set_arm":              [.accessibility, .cgEvent],
+        "track.set_mute":             [.coreMIDI, .accessibility, .cgEvent],
+        "track.set_solo":             [.coreMIDI, .accessibility, .cgEvent],
+        "track.set_arm":              [.coreMIDI, .accessibility, .cgEvent],
         "track.duplicate":            [.cgEvent],
         "track.set_color":            [.accessibility],
 
-        // Mixer — OSC primary for continuous, AX fallback
+        // Mixer — CoreMIDI (MCU faders/V-Pot) primary, OSC and AX as fallbacks.
         "mixer.get_state":            [.accessibility],
-        "mixer.set_volume":           [.osc, .accessibility],
-        "mixer.set_pan":              [.osc, .accessibility],
+        "mixer.set_volume":           [.coreMIDI, .osc, .accessibility],
+        "mixer.set_pan":              [.coreMIDI, .osc, .accessibility],
         "mixer.set_send":             [.osc, .accessibility],
         "mixer.set_output":           [.accessibility],
         "mixer.set_input":            [.accessibility],

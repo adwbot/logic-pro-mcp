@@ -158,20 +158,25 @@ actor CoreMIDIChannel: Channel {
         // MARK: - MCU: Track buttons (mute/solo/arm/select)
 
         case "track.set_mute":
+            guard await mcuReady() else { return .error(mcuNotReadyMessage) }
             return await sendTrackButton(params: params, noteFn: MCU.muteNote, label: "mute")
 
         case "track.set_solo":
+            guard await mcuReady() else { return .error(mcuNotReadyMessage) }
             return await sendTrackButton(params: params, noteFn: MCU.soloNote, label: "solo")
 
         case "track.set_arm":
+            guard await mcuReady() else { return .error(mcuNotReadyMessage) }
             return await sendTrackButton(params: params, noteFn: MCU.armNote, label: "arm")
 
         case "track.select":
+            guard await mcuReady() else { return .error(mcuNotReadyMessage) }
             return await sendTrackButton(params: params, noteFn: MCU.selectNote, label: "select", momentary: true)
 
         // MARK: - MCU: Mixer (fader / V-Pot)
 
         case "mixer.set_volume":
+            guard await mcuReady() else { return .error(mcuNotReadyMessage) }
             guard let trackIdx = params["index"].flatMap(Int.init) else {
                 return .error("mixer.set_volume requires 'index'")
             }
@@ -184,6 +189,7 @@ actor CoreMIDIChannel: Channel {
             return .success("MCU fader track=\(trackIdx) bankCh=\(bankChannel) value=\(value) pb=\(pbValue)")
 
         case "mixer.set_pan":
+            guard await mcuReady() else { return .error(mcuNotReadyMessage) }
             guard let trackIdx = params["index"].flatMap(Int.init) else {
                 return .error("mixer.set_pan requires 'index'")
             }
@@ -203,6 +209,16 @@ actor CoreMIDIChannel: Channel {
             return .error("Unknown CoreMIDI operation: \(operation)")
         }
     }
+
+    // MARK: - MCU readiness gate
+
+    /// True once Logic has completed the MCU handshake. Until then, MCU operations
+    /// return an error so ChannelRouter falls back to Accessibility (no echo-as-success).
+    private func mcuReady() async -> Bool {
+        await handshake.isHandshakeComplete
+    }
+
+    private let mcuNotReadyMessage = "MCU handshake not complete — Logic has not registered the surface. Run: LogicProMCP mcu-setup (one-time install). Falling back to next channel."
 
     // MARK: - MCU button helper
 
