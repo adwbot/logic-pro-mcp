@@ -22,6 +22,13 @@ if CommandLine.arguments.contains("dump-tracks") {
     exit(Int32(DumpTracksCommand.run()))
 }
 
+// Handle `mcu-verify` subcommand — fires an MCU mutation and reads back via AX.
+if let idx = CommandLine.arguments.firstIndex(of: "mcu-verify") {
+    let rest = Array(CommandLine.arguments.dropFirst(idx + 1))
+    let code = await MCUVerifyCommand.run(args: rest)
+    exit(Int32(code))
+}
+
 // Start the MCP server
 let server = LogicProServer()
 do {
